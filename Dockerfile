@@ -1,10 +1,10 @@
-# Base build images
+# Базовые образы для каждой архитектуры
 FROM --platform=linux/amd64 alpine AS build-linux-amd64
 FROM --platform=linux/arm/v7 alpine AS build-linux-armv7
 FROM --platform=linux/arm64 alpine AS build-linux-arm64
 FROM --platform=linux/arm/v5 debian:trixie-slim AS build-linux-armv5
 
-# build image
+# Переименовываем базовый образ в зависимости от TARGETPLATFORM
 FROM build-${TARGETOS}-${TARGETARCH}${TARGETVARIANT} AS build
 
 ARG TARGETPLATFORM
@@ -45,7 +45,7 @@ RUN gunzip -c ./*.gz > "mihomo" && \
 
 COPY entrypoint.sh build/
 
-# base images
+# Базовые образы для каждой архитектуры
 FROM --platform=linux/amd64 alpine:latest AS linux-amd64
 FROM --platform=linux/arm/v7 alpine:latest AS linux-armv7
 FROM --platform=linux/arm64 alpine:latest AS linux-arm64
@@ -60,6 +60,7 @@ ARG TARGETVARIANT
 
 COPY --from=build /tmp/build/ /
 
+ENV DISABLE_NFTABLES=1
 ENV CONFIG="default_config.yaml"
 ENV WORKDIR="/etc/mihomo"
 ENV HEALTH_CHECK_URL="https://www.gstatic.com/generate_204"
@@ -93,12 +94,12 @@ RUN case "$TARGETPLATFORM" in \
         *) echo "Unsupported platform: $TARGETPLATFORM" && exit 1 ;; \
     esac && \
     # IPv4
-    rm /usr/sbin/iptables /usr/sbin/iptables-save /usr/sbin/iptables-restore && \
+    rm -f /usr/sbin/iptables /usr/sbin/iptables-save /usr/sbin/iptables-restore && \
     ln -s /usr/sbin/iptables-legacy /usr/sbin/iptables && \
     ln -s /usr/sbin/iptables-legacy-save /usr/sbin/iptables-save && \
     ln -s /usr/sbin/iptables-legacy-restore /usr/sbin/iptables-restore && \
     # IPv6
-    rm /usr/sbin/ip6tables /usr/sbin/ip6tables-save /usr/sbin/ip6tables-restore && \
+    rm -f /usr/sbin/ip6tables /usr/sbin/ip6tables-save /usr/sbin/ip6tables-restore && \
     ln -s /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
     ln -s /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
     ln -s /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore && \
