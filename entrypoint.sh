@@ -39,6 +39,13 @@ if [ "$OS" = "alpine" ]; then
   fi
 fi
 
+UA="$APP_NAME/$APP_VERSION"
+if [ -n "${PATFORM_SYS_ID:-}" ]; then
+    HWID=$(printf '%s' "$PATFORM_SYS_ID" | busybox sha256sum | busybox cut -c1-16)
+else
+    HWID="$(printf '%s' \"$HOSTNAME\" | busybox sha256sum | busybox cut -c1-16)"
+fi
+
 DEFAULT_CONFIG=$(cat << 'EOF'
 external-controller: $EXTERNAL_CONTROLLER_ADDRESS:$UI_PORT
 external-ui: $EXTERNAL_UI_PATH
@@ -154,7 +161,7 @@ read_cfg() {
   local s3=$(read_cfg "S3");         local s4=$(read_cfg "S4")
   local h1=$(read_cfg "H1");         local h2=$(read_cfg "H2");         local h3=$(read_cfg "H3");         local h4=$(read_cfg "H4")
   local i1=$(read_cfg "I1");         local i2=$(read_cfg "I2");         local i3=$(read_cfg "I3")
-  local i4=$(read_cfg "I4");         local i5=$(read_cfg "I5")          
+  local i4=$(read_cfg "I4");         local i5=$(read_cfg "I5")
   local j1=$(read_cfg "J1");         local j2=$(read_cfg "J2");         local j3=$(read_cfg "J3")
   local itime=$(read_cfg "ITime")
 
@@ -293,6 +300,9 @@ add_provider_block() {
     PROVIDERS_BLOCK="${PROVIDERS_BLOCK}  ${name}:
     type: file
     path: ${path}
+    header:
+          User-Agent:
+                - \"$UA\"
     health-check:
       enable: true
       url: $HEALTH_CHECK_URL
@@ -300,7 +310,27 @@ add_provider_block() {
       timeout: 5000
       lazy: true
       expected-status: 204
+    header:
+      User-Agent:
+        - \"$UA\"
 "
+
+    if [ -n "${HWID:-}" ]; then
+      PROVIDERS_BLOCK="${PROVIDERS_BLOCK}
+      x-hwid:
+        - \"$HWID\"
+      x-device-os:
+        - \"$PATFORM_OS\"
+      x-ver-os:
+        - \"$PATFORM_OS_VER\"
+      x-device-model:
+        - \"$PATFORM_DEV_MODEL\"
+"
+    fi
+
+    PROVIDERS_BLOCK="${PROVIDERS_BLOCK}
+"
+
     PROVIDERS_LIST="${PROVIDERS_LIST}      - ${name}
 "
 }
@@ -349,7 +379,22 @@ while IFS='=' read -r name value; do
       enable: true
       url: \"${HEALTH_CHECK_URL}\"
       interval: 86400
+    header:
+      User-Agent:
+        - \"$UA\"
 "
+    if [ -n "${HWID:-}" ]; then
+      PROVIDERS_BLOCK="${PROVIDERS_BLOCK}
+      x-hwid:
+        - \"$HWID\"
+      x-device-os:
+        - \"$PATFORM_OS\"
+      x-ver-os:
+        - \"$PATFORM_OS_VER\"
+      x-device-model:
+        - \"$PATFORM_DEV_MODEL\"
+"
+    fi
     PROVIDERS_LIST="${PROVIDERS_LIST}      - $(echo "$name")
 "
       ;;
@@ -358,12 +403,46 @@ done <<EOF
 $(env)
 EOF
 
+if [ "$SUB_TYPE" = "DIRECT" ]; then
+  if [ -z "${SUB1}" ]; then
+    echo "When using the \"DIRECT\" mode, you must specify the subscription URL in the \"$SUB1\" parameter."
+    return 1
+  fi
+
+  echo "Start downloading config from \"$SUB1\""
+
+  set -- wget
+
+  [ -n "${UA:-}" ]  && set -- "$@" --user-agent "$UA"
+
+  if [ -n "${HWID:-}" ]; then
+    set -- "$@" --header "x-hwid: $HWID"
+    set -- "$@" --header "x-device-os: $PATFORM_OS"
+    set -- "$@" --header "x-ver-os: $PATFORM_OS_VER"
+    set -- "$@" --header "x-device-model: $PATFORM_DEV_MODEL"
+  fi
+
+  set "$@" "-qO-" "$SUB1"
+
+  if ! "$@" > "$TEMPLATE_DIR/$CONFIG"; then
+    echo "ERROR: wget failed while downloading $SUB1" >&2
+    exit 1
+  fi
+
+  "$@" | envsubst > "$WORKDIR/$CONFIG"
+
+  sleep 1
+  echo "Config downloaded"
+fi
+
+
 export PROVIDERS_BLOCK
 export PROVIDERS_LIST
 
 envsubst < "$TEMPLATE_DIR/$CONFIG" > "$WORKDIR/$CONFIG"
 
-CMD_MIHOMO="${@:-"-d $WORKDIR -f $WORKDIR/$CONFIG"}"
+set -- mihomo
+set "$@" "-d" "$WORKDIR" "-f" "$WORKDIR/$CONFIG"
 # print version mihomo to log
 mihomo -v
-exec mihomo $CMD_MIHOMO || exit 1
+exec "$@"

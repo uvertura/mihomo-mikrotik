@@ -44,6 +44,7 @@ RUN gunzip -c ./*.gz > "mihomo" && \
     chmod -R +x .
 
 COPY entrypoint.sh build/
+COPY load_dns.sh build/
 
 # Базовые образы для каждой архитектуры
 FROM --platform=linux/amd64 alpine:latest AS linux-amd64
@@ -77,6 +78,17 @@ ENV DNS_ENABLE="true"
 ENV DNS_USE_SYSTEM_HOSTS="true"
 ENV IPV6="true"
 
+
+ENV SUB_TYPE="DIRECT"
+ENV APP_NAME="EutratiusROS"
+ENV APP_VERSION="1.0.0"
+ENV PATFORM_SYS_ID=""
+ENV PATFORM_OS="Docker"
+ENV PATFORM_OS_VER="N/A"
+ENV PATFORM_DEV_MODEL="N/A"
+
+
+
 RUN case "$TARGETPLATFORM" in \
         "linux/arm/v5") \
             apt update && \
@@ -103,6 +115,7 @@ RUN case "$TARGETPLATFORM" in \
     ln -s /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
     ln -s /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
     ln -s /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore && \
-    chmod +x /entrypoint.sh
+    chmod +x /entrypoint.sh && \
+    chmod +x /load_dns.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
