@@ -409,7 +409,7 @@ if [ "$SUB_TYPE" = "DIRECT" ]; then
     return 1
   fi
 
-  echo "Start downloading config from \"$SUB1\""
+  echo "Start downloading config template from \"$SUB1\""
 
   set -- wget
 
@@ -422,16 +422,17 @@ if [ "$SUB_TYPE" = "DIRECT" ]; then
     set -- "$@" --header "x-device-model: $PATFORM_DEV_MODEL"
   fi
 
-  set "$@" "-qO-" "$SUB1"
+  set "$@" "-q" "-O" "$TEMPLATE_DIR/$CONFIG" "$SUB1"
 
-  if ! "$@" > "$TEMPLATE_DIR/$CONFIG"; then
-    echo "ERROR: wget failed while downloading $SUB1" >&2
-    exit 1
-  fi
+  while true; do
+    if "$@"; then
+      break
+    fi
 
-  "$@" | envsubst > "$WORKDIR/$CONFIG"
+    echo "Download failed, retrying after 3 sec..." >&2
+    sleep 3
+  done
 
-  sleep 1
   echo "Config downloaded"
 fi
 

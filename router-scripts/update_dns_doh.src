@@ -1,0 +1,34 @@
+:local paramUrl        "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/category-doh.list"
+:local paramListName   "doh-domains"
+:local paramDnsPrefix  "To block "
+
+:log info "Download DoH DNS rules"
+/container/shell Eustratius cmd="mkdir -p /dns_rules"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramListName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramUrl\" /load_dns_rules.sh > /dns_rules/doh_domains.src"
+
+
+/container/shell Eustratius cmd="sha256sum /dns_rules/doh_domains.src|awk '{print $1}' > /dns_rules/doh_domains.sha256"
+
+##########################
+:global EustratiusLastDohSha
+:local oldSha $EustratiusLastDohSha
+:local newSha
+:do {:set newSha [/file/get Eustratius_data/dns_rules/doh_domains.sha256 contents as-string]} on-error={}
+
+:if ([:typeof $oldSha] = "nothing" or $newSha != $oldSha) do={
+    :log info "Remove old DoH DNS rules"
+    /ip firewall address-list remove [find list=$paramListName]
+    /ip dns static remove [find where address-list=$paramListName]
+
+    :log info "Apply new DoH DNS rules"
+    /import Eustratius_data/dns_rules/doh_domains.src
+
+    :global EustratiusLastDohSha $newSha
+    :log info "DoH domains updated successfully"
+}
+
+:if ([:typeof $oldSha] != "nothing" and $newSha = $oldSha) do={
+    :log info "No need DoH DNS rules update"
+}
+##########################
+

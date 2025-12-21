@@ -1,0 +1,147 @@
+
+# !!! Make sure the network is not in use.
+:local paramVpnNetGw        "192.168.189.1"
+:local paramVpnNetIp        "192.168.189.2"
+# 255.255.255.248
+:local paramVpnNetCidr      29
+
+:local paramVpnName         "Eustratius"
+:local paramDefaultComment  "Eustratius VPN"
+# !!! Change to you subscription URL
+:local paramSubscription    "https://subscription.eustratius.ru/bLGrZM8t-eXZsjun"
+
+:local paramCntImage        "registry-1.docker.io/volkhonsky/mihomo-eustratius:latest"
+
+
+:local getMaskFromCidr do={
+    :local cidr ($1)
+
+    :if ($cidr >= 0 && $cidr <= 32) do={
+        :local mask 0
+
+        :for i from=1 to=$cidr do={
+            :set mask (($mask >> 1) | 0x80000000)
+        }
+
+        :local octet1 (($mask >> 24) & 255)
+        :local octet2 (($mask >> 16) & 255)
+        :local octet3 (($mask >> 8) & 255)
+        :local octet4 ($mask & 255)
+
+        :return ("$octet1.$octet2.$octet3.$octet4")
+    } else={
+        :return "0.0.0.0"
+    }
+}
+
+:local paramDohSrv          "https://cloudflare-dns.com/dns-query,https://dns.google/dns-query"
+:local paramLanIfList       "LAN"
+:local paramCntUiPort       9090
+:local paramCntMixedPort    1080
+:local paramCntLogLevel     "INFO"
+
+:local paramVpnNetMask      [$getMaskFromCidr $paramVpnNetCidr]
+:local paramVethName        ("veth" . $paramVpnName)
+:local paramBridgeName      ("bridge" . $paramVpnName)
+:local paramRoutingTable    ("to" . $paramVpnName)
+:local paramRoutingMark     ("to" . $paramVpnName . "Mark")
+:local paramCntDir          ("docker/" . $paramVpnName)
+:local paramCntEnv          ($paramVpnName . "Env")
+:local paramCntName         ($paramVpnName)
+:local paramRootDataPath    {$paramVpnName . "_data"}
+:local paramDnsDataPath     {$paramRootDataPath . "/dns_rules"}
+
+:local paramDnsFwdName      ("fwd" . $paramVpnName)
+:local paramAddrList        ("to" . $paramVpnName . "List")
+
+
+:local paramSystemId       ""
+:do {:set paramSystemId [/system/license/get software-id]} on-error={}
+:do {:set paramSystemId [/system/license/get system-id]} on-error={}
+:local paramDeviceOs       "RouterOS"
+:local paramDeviceOsVer    [/system/resource/get version]
+:local paramDeviceModel    [/system/resource/get board-name]
+
+
+#remove old objects
+:log info "Removing old \"$paramVpnName\" objects"
+:if ([:len [/container find where name=$paramCntName running]] != 0) do={
+    /container stop [find where name="$paramCntName"]
+    :log info "Waiting 10s for stopping \"$paramCntName\" container"
+    :delay 10
+}
+
+
+/ip/dns/static/remove [find where comment~("^" . $paramVpnName . "-")]
+/ip/dns/static/remove [find where type="FWD" forward-to=$paramDnsFwdName]
+/container/remove [find where name="$paramCntName"]
+/file/remove $paramCntDir
+/file/remove $paramDnsDataPath
+/container/mounts/remove [find where name=dns_rules]
+/container/envs/remove [find where list="$paramCntEnv"]
+/ip/firewall/mangle/remove [find where comment=$paramDefaultComment]
+/ip/route/remove [find where routing-table="$paramRoutingTable"]
+/routing/table/remove [find where name="$paramRoutingTable"]
+/ip/dns/forwarders/remove [find where name="$paramDnsFwdName"]
+/interface/bridge/port/remove [find interface="$paramVethName"]
+/ip/address/remove [find where interface="$paramBridgeName"]
+/interface/bridge/remove [find where name="$paramBridgeName"]
+/interface/veth/remove [find where name="$paramVethName"]
+
+
+
+:log info "Creating vEth"
+/interface/veth/add gateway="$paramVpnNetGw" address="$paramVpnNetIp/$paramVpnNetCidr" name="$paramVethName" comment="$paramDefaultComment"
+
+:log info "Creating bridge"
+/interface/bridge/add port-cost-mode=short name="$paramBridgeName" comment="$paramDefaultComment" igmp-snooping=yes dhcp-snooping=yes
+/ip/address/add address="$$paramVpnNetGw/$paramVpnNetCidr" network="$paramVpnNetMask" interface="$paramBridgeName" comment="$paramDefaultComment"
+/interface/bridge/port/add bridge="$paramBridgeName" interface="$paramVethName" comment="$paramDefaultComment"
+
+:log info "Creating dns forwarders"
+/certificate/settings set builtin-trust-anchors=trusted
+/ip/dns/forwarders/add doh-servers="$paramDohSrv" name="$paramDnsFwdName"
+
+:log info "Creating routing table and default route"
+/routing/table/add disabled=no fib name="$paramRoutingTable" comment="$paramDefaultComment"
+/ip/route/add check-gateway=ping disabled=no distance=1 dst-address=0.0.0.0/0 gateway="$paramVpnNetIp%$paramBridgeName" pref-src="" \
+    routing-table="$paramRoutingTable"
+
+
+#TODO: need remove old rules
+:log info "Adding firewall mangle rules"
+/ip/firewall/mangle/add action=mark-connection chain=prerouting connection-mark=no-mark dst-address-list="$paramRoutingMark" \
+    in-interface-list=LAN new-connection-mark="$paramRoutingMark" passthrough=yes comment="$paramDefaultComment"
+/ip/firewall/mangle/add action=mark-routing chain=prerouting comment="$paramDefaultComment" connection-mark="$paramRoutingMark" in-interface-list="$paramLanIfList" \
+    new-routing-mark="$paramRoutingTable" passthrough=no routing-mark="!$paramRoutingTable" dst-address-type=!local
+/ip/firewall/filter/set [find where action=fasttrack-connection] connection-mark=no-mark
+
+# /ip/firewall/nat/add action=redirect chain=dstnat dst-address-type=!local dst-port=53 in-interface-list="$paramLanIfList" protocol=udp
+# /ip/firewall/nat/add action=redirect chain=dstnat dst-address-type=!local dst-port=53 in-interface-list="$paramLanIfList" protocol=tcp
+
+
+:log info "Creating container env \"$paramCntEnv\"..."
+/container/envs/add list="$paramCntEnv" key=UI_PORT value="$paramCntUiPort"
+/container/envs/add list="$paramCntEnv" key=MIXED_PORT value="$paramCntMixedPort"
+/container/envs/add list="$paramCntEnv" key=LOG_LEVEL value=INFO
+/container/envs/add list="$paramCntEnv" key=SUB_TYPE value="DIRECT"
+
+/container/envs/add list="$paramCntEnv" key=PATFORM_SYS_ID value="$paramSystemId"
+/container/envs/add list="$paramCntEnv" key=PATFORM_OS value="$paramDeviceOs"
+/container/envs/add list="$paramCntEnv" key=PATFORM_OS_VER value="$paramDeviceOsVer"
+/container/envs/add list="$paramCntEnv" key=PATFORM_DEV_MODEL value="$paramDeviceModel"
+
+/container/envs/add list="$paramCntEnv" key=SUB1 value="$paramSubscription"
+
+:log info "Creating container \"$paramCntName\"..."
+/file/add type=directory name=$paramCntDir
+/file/add type=directory name=$paramDnsDataPath
+/container/mounts/add name=dns_rules src="$paramDnsDataPath" dst=/dns_rules
+/container/add name="$paramCntName" envlists="$paramCntEnv" interface="$paramVethName" remote-image="$paramCntImage" \
+    start-on-boot=yes comment="$paramDefaultComment" root-dir=$paramCntDir mounts=dns_rules dns=8.8.8.8,1.1.1.1,77.88.8.8
+
+:log info "Waiting 30 for getting \"$paramCntName\" container"
+:delay 30
+
+:log info "Starting container \"$paramCntName\"..."
+/container start [find where name="$paramCntName"]

@@ -44,7 +44,7 @@ RUN gunzip -c ./*.gz > "mihomo" && \
     chmod -R +x .
 
 COPY entrypoint.sh build/
-COPY load_dns.sh build/
+COPY load_dns_rules.sh build/
 
 # Базовые образы для каждой архитектуры
 FROM --platform=linux/amd64 alpine:latest AS linux-amd64
@@ -116,6 +116,6 @@ RUN case "$TARGETPLATFORM" in \
     ln -s /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
     ln -s /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore && \
     chmod +x /entrypoint.sh && \
-    chmod +x /load_dns.sh
+    chmod +x /load_dns_rules.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

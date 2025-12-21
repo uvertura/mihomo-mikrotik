@@ -1,0 +1,69 @@
+:local paramVpnName         "Eustratius"
+:local paramDnsFwdName      ("fwd" . $paramVpnName)
+:local paramRoutingMark     ("to" . $paramVpnName . "Mark")
+:local paramDnsPrefix       ($paramVpnName . "-")
+
+
+:log info "Download FWD DNS rules"
+/container/shell Eustratius cmd="mkdir -p /dns_rules; rm -f /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/telegram.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/discord.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/habr.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/jetbrains.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/meta.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/youtube.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/linkedin.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/openai.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/x.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/microsoft-dev.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+:local paramDnsUrl "https://static.eustratius.ru/geosite/custom.list"
+/container/shell Eustratius cmd="ADDRESS_LIST=\"$paramRoutingMark\" FORWARD_TO=\"$paramDnsFwdName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramDnsUrl\" /load_dns_rules.sh >> /dns_rules/fwd_domains.rsc"
+
+
+
+##########################
+
+/container/shell Eustratius cmd="sha256sum /dns_rules/fwd_domains.src|awk '{print $1}' > /dns_rules/fwd_domains.sha256"
+
+##########################
+:global EustratiusLastFwdSha
+:local oldSha $EustratiusLastFwdSha
+:local newSha
+:do {:set newSha [/file/get Eustratius_data/dns_rules/fwd_domains.sha256 contents as-string]} on-error={}
+
+:if ([:typeof $oldSha] = "nothing" or $newSha != $oldSha) do={
+    :log info "Remove old FWD DNS rules"
+    /ip/dns/static remove [find where comment~("^" . $paramDnsPrefix)]
+
+    :log info "Apply new FWD DNS rules"
+    /import Eustratius_data/dns_rules/fwd_domains.rsc
+
+    :global EustratiusLastFwdSha $newSha
+    :log info "Update DNS rules finished"
+}
+
+:if ([:typeof $oldSha] != "nothing" and $newSha = $oldSha) do={
+    :log info "No need FWD DNS rules update"
+}
+##########################
