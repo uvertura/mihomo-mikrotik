@@ -7,7 +7,7 @@
 /container/shell Eustratius cmd="ADDRESS_LIST=\"$paramListName\" COMMENT_PREFIX=\"$paramDnsPrefix\" FILE_URL=\"$paramUrl\" /load_dns_rules.sh > /dns_rules/doh_domains.src"
 
 
-/container/shell Eustratius cmd="sha256sum /dns_rules/doh_domains.src|awk '{print $1}' > /dns_rules/doh_domains.sha256"
+/container/shell Eustratius cmd="sha256sum /dns_rules/doh_domains.src|awk '{print \$1}' > /dns_rules/doh_domains.sha256"
 
 ##########################
 :global EustratiusLastDohSha
@@ -15,7 +15,9 @@
 :local newSha
 :do {:set newSha [/file/get Eustratius_data/dns_rules/doh_domains.sha256 contents as-string]} on-error={}
 
-:if ([:typeof $oldSha] = "nothing" or $newSha != $oldSha) do={
+:local needUpdate ([:typeof $oldSha] = "nothing" or [:typeof $oldSha] = "nil" or $newSha != $oldSha)
+
+:if ($needUpdate = true) do={
     :log info "Remove old DoH DNS rules"
     /ip firewall address-list remove [find list=$paramListName]
     /ip dns static remove [find where address-list=$paramListName]
@@ -24,11 +26,11 @@
     /import Eustratius_data/dns_rules/doh_domains.src
 
     :global EustratiusLastDohSha $newSha
-    :log info "DoH domains updated successfully"
+    :log info "Update DoH DNS rules finished"
 }
 
-:if ([:typeof $oldSha] != "nothing" and $newSha = $oldSha) do={
-    :log info "No need DoH DNS rules update"
+:if ($needUpdate = false) do={
+    :log info "No need to update DoH DNS rules"
 }
 ##########################
 

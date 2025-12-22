@@ -43,8 +43,8 @@
 
 
 ##########################
-
-/container/shell Eustratius cmd="sha256sum /dns_rules/fwd_domains.src|awk '{print $1}' > /dns_rules/fwd_domains.sha256"
+:log info "Calc check sum for FWD DNS rules file"
+/container/shell Eustratius cmd="sha256sum /dns_rules/fwd_domains.rsc|awk '{print \$1}' > /dns_rules/fwd_domains.sha256"
 
 ##########################
 :global EustratiusLastFwdSha
@@ -52,7 +52,9 @@
 :local newSha
 :do {:set newSha [/file/get Eustratius_data/dns_rules/fwd_domains.sha256 contents as-string]} on-error={}
 
-:if ([:typeof $oldSha] = "nothing" or $newSha != $oldSha) do={
+:local needUpdate ([:typeof $oldSha] = "nothing" or [:typeof $oldSha] = "nil" or $newSha != $oldSha)
+
+:if ($needUpdate) do={
     :log info "Remove old FWD DNS rules"
     /ip/dns/static remove [find where comment~("^" . $paramDnsPrefix)]
 
@@ -60,10 +62,10 @@
     /import Eustratius_data/dns_rules/fwd_domains.rsc
 
     :global EustratiusLastFwdSha $newSha
-    :log info "Update DNS rules finished"
+    :log info "Update FWD DNS rules finished"
 }
 
-:if ([:typeof $oldSha] != "nothing" and $newSha = $oldSha) do={
-    :log info "No need FWD DNS rules update"
+:if ($needUpdate = false) do={
+    :log info "No need to update FWD DNS rules"
 }
 ##########################
