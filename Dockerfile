@@ -115,6 +115,8 @@ RUN case "$TARGETPLATFORM" in \
     ln -s /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
     ln -s /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
     ln -s /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore && \
+    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf && \
+    echo "net.ipv6.tcp_fastopen = 3" >> /etc/sysctl.conf && \
     chmod +x /entrypoint.sh && \
     chmod +x /load_dns_rules.sh
 
